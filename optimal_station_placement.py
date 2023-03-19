@@ -1,20 +1,13 @@
 
-# %%
-import os
-import sys
+# %% import packages
 import numpy as np
+from itertools import combinations
 import pandas as pd
-#import openmatrix as omx
 import igraph as ig
 import random
-import matplotlib.cm as cm
-import matplotlib.colors
-import matplotlib.pyplot as plt
-from functools import reduce
+from bike_functions import *
 
-os.chdir("/Users/ericfrey/Documents/networks/ps4")
-# %%
-#read road data
+# %% read road data as dataframes
 anaheim = "anaheim.tntp"
 anaheim = pd.read_csv(anaheim, skiprows=8, sep='\t').drop(["~",";"], axis=1)
 
@@ -22,8 +15,7 @@ anaheim = pd.read_csv(anaheim, skiprows=8, sep='\t').drop(["~",";"], axis=1)
 flow = "anaheim_flow.tntp"
 flow = pd.read_csv(flow, sep='\t|\s', engine='python')
 anaheim = anaheim.merge(flow[["Volume"]], left_index=True, right_index=True)
-# %%
-# get graph
+# %% convert the dataframe data to a graph.
 g = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
 
 g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
@@ -31,9 +23,10 @@ g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
 sg = g.subgraph(g.neighborhood(1, order= 7))
 sg_df = sg.get_edge_dataframe()
 
+# here's what the subgraph looks like. The edges are colored by volume of traffic.
 ig.plot(sg)
 
-# %% generate fake rider data:
+# %% generate some fake commuter data:
 paths = []
 time = []
 volume = []
@@ -59,7 +52,6 @@ sg.es['color'] = ['red' if edge else 'black' for edge in is_bike_edge]
 ig.plot(sg)
 
 # %% calculate new travel time based on this
-
 travel_time_bike = []
 for i, path in enumerate(riders.path):
     if any_subpath(station_paths, path):
@@ -68,7 +60,47 @@ for i, path in enumerate(riders.path):
         travel_time_bike.append(riders.loc[i]['travel_time'])
 riders['travel_time_bike'] = pd.Series(travel_time_bike)
 
-# %%
-print(riders.travel_time.sum())
-print(riders.travel_time_bike.sum())
+
+print('travel time without stations: ', riders.travel_time.sum())
+print('travel time with two randomly placed stations: ', riders.travel_time_bike.sum())
+# %% Ok, we did a small scale, now let's see the time reduction when we iterate over all possible stations
+stations = filter_stations(list(combinations(sg.vs.indices,2)))
+
+station_time = []
+for station in stations:
+    station_paths = sg.get_all_simple_paths(station[0], station[1])
+    station_paths.append(sg.get_all_simple_paths(station[1], station[0]))
+
+    is_bike_edge = paths_to_edges(station_paths, sg_df)
+
+    travel_time_bike = []
+    for i, path in enumerate(riders.path):
+        if any_subpath(station_paths, path):
+            travel_time_bike.append(calculate_travel_time_bike(path, sg_df, is_bike_edge))
+        else:
+            travel_time_bike.append(riders.loc[i]['travel_time'])
+    riders['travel_time_bike'] = pd.Series(travel_time_bike)
+    station_time.append(riders.travel_time_bike.sum())
+
+# report of stations and their times:
+station_df = pd.DataFrame({"station":stations, "station_time":station_time})
+# this is a visualization of travel time iterating over all possible stations.
+# we see most bike station placements result in little time reduction, while there are a few outliers
+# that reduce time a lot
+station_df.station_time.hist()
+
+# top 10 station placements and their times
+station_df.sort_values('station_time').head(10)
+# %% visualization of best station
+station = station_df.sort_values('station_time').head(1).station.values[0]
+station_paths = sg.get_all_simple_paths(station[0], station[1])
+station_paths.append(sg.get_all_simple_paths(station[1], station[0]))
+
+is_bike_edge = paths_to_edges(station_paths, sg_df)
+
+# visualize and plot
+sg.es['color'] = ['red' if edge else 'black' for edge in is_bike_edge]
+sg.vs['color'] = ['red' if node in station else 'black' for node in sg.vs.indices]
+print('best bike station placement:')
+ig.plot(sg)
 # %%

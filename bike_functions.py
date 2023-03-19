@@ -1,10 +1,3 @@
-import os
-import sys
-import numpy as np
-import pandas as pd
-#import openmatrix as omx
-import igraph as ig
-import random
 import matplotlib.cm as cm
 import matplotlib.colors
 import matplotlib.pyplot as plt
@@ -98,3 +91,10 @@ def calculate_travel_time_bike(path, edges_df, is_bike_edge):
     travel_time += (edges[~edges.bike]['length'] / edges[~edges.bike]['speed']).sum()
     
     return travel_time
+
+def filter_stations(station_list):
+    filtered_tuple = []
+    for tuple in station_list:
+        if tuple[0] < tuple[1]:
+            filtered_tuple.append(tuple)
+    return filtered_tuple
