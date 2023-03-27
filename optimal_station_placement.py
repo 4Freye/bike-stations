@@ -1,7 +1,7 @@
 # %% set working directory if needed
 import os
 os.getcwd()
-#os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
+os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
 #os.getcwd()
 
 # %% import packages
@@ -9,23 +9,137 @@ import numpy as np
 from itertools import combinations
 import pandas as pd
 import igraph as ig
+
+from queue import PriorityQueue
+
+#from igraph.drawing.colors import GradientPalette#ColorScale, ColorBrewer
+#import ColorBrewer
+
 import random
 from bike_functions import *
 
+# %% load trips data as potential commuter data
+anaheim_trips = "anaheim_trips.tntp"
+
+with open('anaheim_trips.tntp', 'r') as f:
+    data = f.readlines()
+
+table = []
+for line in data:
+    if 'Origin' in line:
+        origin = line.strip().split()[1]
+        # Add missing destination for first origin
+        #table.append([origin, '1', '0'])
+    else:
+        for destination in line.strip().split(';')[:-1]:
+            destination_number, weight = destination.split(':')
+            table.append([origin, destination_number.strip(), weight.strip()])
+    # Add missing destination for last origin
+    #table.append([origin, '37', '0'])
+
+#print(table)
+trips = pd.DataFrame(table, columns=['Origin', 'Destination', 'Weight'])
+print(trips.shape)
+print(trips.head())
+
+
 # %% read road data as dataframes
+
+# Zones: 38 __ Nodes: 416 __ Links: 914 __ Trips: 104,694.40
+# Time: minutes __ Distance: feet __ Speed: feet per minute 
+
 anaheim = "anaheim.tntp"
 anaheim = pd.read_csv(anaheim, skiprows=8, sep='\t').drop(["~",";"], axis=1)
+print(anaheim.head())
 
 #flow data
 flow = "anaheim_flow.tntp"
 flow = pd.read_csv(flow, sep='\t|\s', engine='python')
 anaheim = anaheim.merge(flow[["Volume"]], left_index=True, right_index=True)
+
 # %% convert the dataframe data to a graph.
 g = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
 
+# add colour as edge attribute - on the basis of volume
 g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
 
-# generate a subgraph to work with fewer nodes
+# give zone-nodes a different colour and shape to make them visible
+
+zone_indices = list(range(1,39))
+
+colors = ["red" if i in subset_indices else "grey" for i in range(g.vcount())]
+shapes = ["square" if i in subset_indices else "circle" for i in range(g.vcount())]
+g.vs["color"] = colors
+g.vs["shape"] = shapes
+
+# add degree as vertex attribute
+degree = g.degree()
+g.vs["degree"] = degree
+
+# calculate vertex sizes based on degree
+
+sizes = [d * 1.4 for d in degree]
+
+#adjust layout -  for full list of options: https://igraph.org/python/tutorial/0.9.6/visualisation.html#graph-layouts
+layout = g.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
+
+# get graph information and plot
+g.summary() # 416 vertices and 914 edges
+ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
+
+# %%
+
+# find all shortest paths between vertices in the subset
+shortest_paths = []
+for source in zone_indices:
+    for target in zone_indices:
+        if source != target:
+            paths = g.get_all_shortest_paths(source, to=target)
+            shortest_paths.extend(paths)
+
+#print(shortest_paths) # list of lists
+trip_paths = pd.DataFrame({
+    'path': shortest_paths,
+    'Origin': [lst[0] for lst in shortest_paths],
+    'Destination': [lst[-1] for lst in shortest_paths],
+    'path_length': [len(lst) for lst in shortest_paths]
+})
+
+print(trip_paths[0:10])
+print(trip_paths.shape)
+
+#count the number of duplicates
+num_duplicates = trip_paths.duplicated(subset=['Origin', 'Destination']).sum()
+print(f"There are {num_duplicates} duplicates in the DataFrame, as multiple candidates for the shortest path exist between many nodes.")
+
+grouped = trip_paths.groupby(['Origin', 'Destination']).size().reset_index(name='count')
+grouped_filtered = grouped[grouped['count'] > 1]
+
+print(grouped_filtered)
+
+## for simplicity, I now simply randomly select one potential shortest path betwen each zone-node
+## we could later try to attach likelihoods of any of them being used based on the volume along each of the paths
+
+trip_paths_simple = trip_paths.groupby(['Origin', 'Destination']).apply(pd.DataFrame.sample, n=1).reset_index(drop=True)
+print(trip_paths_simple.head())
+print(trip_paths_simple.shape) # as expected, we are back to 1406 rows (38*37)
+
+# check that there are no more duplicate
+#num_duplicates = trip_paths_simple.duplicated(subset=['Origin', 'Destination']).sum()
+#num_duplicates
+
+# %% Generate fake station data (as below, but now for the whole graph) - I wasn't able to run this as it takes too long:
+bike_stations = random.sample(g.vs.indices,2)
+station_paths = g.get_all_simple_paths(bike_stations[0], bike_stations[1])
+station_paths.append(g.get_all_simple_paths(bike_stations[1], bike_stations[0]))
+
+is_bike_edge = paths_to_edges(station_paths, anaheim)
+
+# visualize and plot
+g.es['color'] = ['grey' if edge else 'pink' for edge in is_bike_edge]
+ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
+
+# %% optional: generate a subgraph to work with fewer nodes
 sg = g.subgraph(g.neighborhood(1, order= 7))
 sg_df = sg.get_edge_dataframe()
 
@@ -46,30 +160,8 @@ for v in sg.vs.indices:
 
 riders = pd.DataFrame({"path":paths, "travel_time":time, "volume": volume})
 
-# %% alternatively: use trips data as commuter data
-anaheim_trips = "anaheim_trips.tntp"
-
-with open('anaheim_trips.tntp', 'r') as f:
-    data = f.readlines()
-
-table = []
-for line in data:
-    if 'Origin' in line:
-        origin = line.strip().split()[1]
-        # Add missing destination for first origin
-        #table.append([origin, '1', '0'])
-    else:
-        for destination in line.strip().split(';')[:-1]:
-            destination_number, weight = destination.split(':')
-            table.append([origin, destination_number.strip(), weight.strip()])
-    # Add missing destination for last origin
-    #table.append([origin, '37', '0'])
-
-#print(table)
-
-trips = pd.DataFrame(table, columns=['Origin', 'Destination', 'Weight'])
-print(trips.shape)
-print(trips.head())
+print(riders.shape)
+print(riders.head())
 
 # %% Generate fake station data:
 bike_stations = random.sample(sg.vs.indices,2)
