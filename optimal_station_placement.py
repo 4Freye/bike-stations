@@ -1,3 +1,8 @@
+# %% set working directory if needed
+import os
+os.getcwd()
+#os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
+#os.getcwd()
 
 # %% import packages
 import numpy as np
@@ -20,6 +25,7 @@ g = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=F
 
 g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
 
+# generate a subgraph to work with fewer nodes
 sg = g.subgraph(g.neighborhood(1, order= 7))
 sg_df = sg.get_edge_dataframe()
 
@@ -39,6 +45,31 @@ for v in sg.vs.indices:
         volume.append(get_total_volume(path, sg_df))
 
 riders = pd.DataFrame({"path":paths, "travel_time":time, "volume": volume})
+
+# %% alternatively: use trips data as commuter data
+anaheim_trips = "anaheim_trips.tntp"
+
+with open('anaheim_trips.tntp', 'r') as f:
+    data = f.readlines()
+
+table = []
+for line in data:
+    if 'Origin' in line:
+        origin = line.strip().split()[1]
+        # Add missing destination for first origin
+        #table.append([origin, '1', '0'])
+    else:
+        for destination in line.strip().split(';')[:-1]:
+            destination_number, weight = destination.split(':')
+            table.append([origin, destination_number.strip(), weight.strip()])
+    # Add missing destination for last origin
+    #table.append([origin, '37', '0'])
+
+#print(table)
+
+trips = pd.DataFrame(table, columns=['Origin', 'Destination', 'Weight'])
+print(trips.shape)
+print(trips.head())
 
 # %% Generate fake station data:
 bike_stations = random.sample(sg.vs.indices,2)
