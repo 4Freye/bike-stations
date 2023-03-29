@@ -231,29 +231,29 @@ ig.plot(sg)
 ############################################
 # Generating rider data that reflects the volume of each edge
 
-paths = []
-time = []
-volume = []
+# paths = []
+# time = []
+# volume = []
 
-# %%
-riders
-# %%
-def has_nan(lst):
-    return np.isnan(lst).any()
-for v in sg.vs.indices:
-    d_paths=dict()
-    possible_paths=sg.get_all_shortest_paths(v)
-    #figure out which paths are the shortest between two pairs of nodes
-    for i,path in enumerate(possible_paths):
-        d_paths[i]=round(get_total_volume(path, sg_df),2)
+# # %%
+# riders
+# # %%
+# def has_nan(lst):
+#     return np.isnan(lst).any()
+# for v in sg.vs.indices:
+#     d_paths=dict()
+#     possible_paths=sg.get_all_shortest_paths(v)
+#     #figure out which paths are the shortest between two pairs of nodes
+#     for i,path in enumerate(possible_paths):
+#         d_paths[i]=round(get_total_volume(path, sg_df),2)
 
-    d_paths={k:v/sum(list(d_paths.values())) for k,v in d_paths.items()}
-    if has_nan(list(d_paths.values())) ==False:
-        sampled_indices = np.random.choice(list(d_paths.keys()), size=3, p=list(d_paths.values()))
-        sampled_paths=[possible_paths[i] for i in sampled_indices]
-    # break
-        paths.extend(sampled_paths)
-# %%
+#     d_paths={k:v/sum(list(d_paths.values())) for k,v in d_paths.items()}
+#     if has_nan(list(d_paths.values())) ==False:
+#         sampled_indices = np.random.choice(list(d_paths.keys()), size=3, p=list(d_paths.values()))
+#         sampled_paths=[possible_paths[i] for i in sampled_indices]
+#     # break
+#         paths.extend(sampled_paths)
+# # %%
 
-riders = pd.DataFrame({"path":paths, "travel_time":time, "volume": volume})
-# %%
+# riders = pd.DataFrame({"path":paths, "travel_time":time, "volume": volume})
+# # %%
