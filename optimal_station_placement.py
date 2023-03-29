@@ -1,7 +1,7 @@
 # %% set working directory if needed
 import os
 os.getcwd()
-os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
+#os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
 #os.getcwd()
 
 # %% import packages
@@ -67,8 +67,8 @@ g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
 
 zone_indices = list(range(1,39))
 
-colors = ["red" if i in subset_indices else "grey" for i in range(g.vcount())]
-shapes = ["square" if i in subset_indices else "circle" for i in range(g.vcount())]
+colors = ["red" if i in zone_indices else "grey" for i in range(g.vcount())]
+shapes = ["square" if i in zone_indices else "circle" for i in range(g.vcount())]
 g.vs["color"] = colors
 g.vs["shape"] = shapes
 
@@ -163,6 +163,18 @@ riders = pd.DataFrame({"path":paths, "travel_time":time, "volume": volume})
 print(riders.shape)
 print(riders.head())
 
+# %% alternative: instead of fake commuter data: real commuter data
+real_riders = pd.read_csv("real commutes.csv")
+
+real_riders_merged = pd.merge(real_riders, trip_paths_simple, on=['Origin', 'Destination'])
+# g_df = g.get_edge_dataframe()
+
+real_riders_merged["travel_time"]= real_riders_merged['path'].apply(calculate_travel_time, args=(sg_df,))
+# because we are using the subgraph, there will be travel times == 0 (not in the subplot)
+# we filter them out. when using the whole graph, the data is fully computed
+riders = real_riders_merged[real_riders_merged["travel_time"]!=0]
+
+
 # %% Generate fake station data:
 bike_stations = random.sample(sg.vs.indices,2)
 station_paths = sg.get_all_simple_paths(bike_stations[0], bike_stations[1])
@@ -180,7 +192,7 @@ for i, path in enumerate(riders.path):
     if any_subpath(station_paths, path):
         travel_time_bike.append(calculate_travel_time_bike(path, sg_df, is_bike_edge))
     else:
-        travel_time_bike.append(riders.loc[i]['travel_time'])
+        travel_time_bike.append(riders.iloc[i]['travel_time'])
 riders['travel_time_bike'] = pd.Series(travel_time_bike)
 
 
@@ -201,7 +213,7 @@ for station in stations:
         if any_subpath(station_paths, path):
             travel_time_bike.append(calculate_travel_time_bike(path, sg_df, is_bike_edge))
         else:
-            travel_time_bike.append(riders.loc[i]['travel_time'])
+            travel_time_bike.append(riders.iloc[i]['travel_time'])
     riders['travel_time_bike'] = pd.Series(travel_time_bike)
     station_time.append(riders.travel_time_bike.sum())
 
@@ -226,4 +238,7 @@ sg.es['color'] = ['red' if edge else 'black' for edge in is_bike_edge]
 sg.vs['color'] = ['red' if node in station else 'black' for node in sg.vs.indices]
 print('best bike station placement:')
 ig.plot(sg)
+
+
+
 # %%
