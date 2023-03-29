@@ -2,6 +2,8 @@ import matplotlib.cm as cm
 import matplotlib.colors
 import matplotlib.pyplot as plt
 from functools import reduce
+import numpy as np
+import pandas as pd
 
 def combine_series(series_list):
     return reduce(lambda s1, s2: s1 | s2, series_list).astype(bool)
@@ -98,3 +100,24 @@ def filter_stations(station_list):
         if tuple[0] < tuple[1]:
             filtered_tuple.append(tuple)
     return filtered_tuple
+
+def create_weighted_adjacency_matrix(from_nodes, to_nodes, edge_attributes):
+    # Combine the from-nodes, to-nodes, and edge attributes into a single DataFrame
+    edge_list = pd.DataFrame({'from': from_nodes, 'to': to_nodes, 'weight': edge_attributes})
+    
+    # Get the unique nodes in the edge list
+    nodes = np.union1d(edge_list['from'], edge_list['to'])
+    
+    # Create an empty adjacency matrix with the correct shape
+    n = len(nodes)
+    adj_matrix = np.zeros((n, n))
+    
+    # Use advanced indexing to fill in the adjacency matrix with edge weights
+    from_indices = np.searchsorted(nodes, edge_list['from'])
+    to_indices = np.searchsorted(nodes, edge_list['to'])
+    adj_matrix[from_indices, to_indices] = edge_list['weight']
+    
+    return adj_matrix
+
+    
+    return adj_matrix
