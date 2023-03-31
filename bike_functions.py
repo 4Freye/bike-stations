@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 from functools import reduce
 import numpy as np
 import pandas as pd
+from pytrans.UrbanNetworkAnalysis import TransportationNetworks as tn
+import scipy.integrate as integrate 
+from scipy.optimize import minimize_scalar
 
 def combine_series(series_list):
     return reduce(lambda s1, s2: s1 | s2, series_list).astype(bool)
@@ -73,12 +76,19 @@ def any_subpath(short_paths, long_path):
     return False
 
 def calculate_travel_time(path, edges_df):
+
+    if 'init_node' in edges_df.columns:
+        source= 'init_node'
+        target= 'term_node'
+    else:
+        source = 'source'
+        target = 'target'
     # Select the edges that correspond to the given path
-    edges = edges_df.loc[edges_df['source'].isin(path[:-1]) & edges_df['target'].isin(path[1:])]
+    edges = edges_df.loc[edges_df[source].isin(path[:-1]) & edges_df[target].isin(path[1:])]
 
     # Calculate the total travel time for the path
     travel_time = (edges['length'] / edges['speed']).sum()
-    
+
     return travel_time
 
 def calculate_travel_time_bike(path, edges_df, is_bike_edge):
@@ -101,23 +111,75 @@ def filter_stations(station_list):
             filtered_tuple.append(tuple)
     return filtered_tuple
 
-def create_weighted_adjacency_matrix(from_nodes, to_nodes, edge_attributes):
-    # Combine the from-nodes, to-nodes, and edge attributes into a single DataFrame
-    edge_list = pd.DataFrame({'from': from_nodes, 'to': to_nodes, 'weight': edge_attributes})
-    
-    # Get the unique nodes in the edge list
-    nodes = np.union1d(edge_list['from'], edge_list['to'])
-    
-    # Create an empty adjacency matrix with the correct shape
-    n = len(nodes)
-    adj_matrix = np.zeros((n, n))
-    
-    # Use advanced indexing to fill in the adjacency matrix with edge weights
-    from_indices = np.searchsorted(nodes, edge_list['from'])
-    to_indices = np.searchsorted(nodes, edge_list['to'])
-    adj_matrix[from_indices, to_indices] = edge_list['weight']
-    
-    return adj_matrix
+def calculate_path_free_flow_time(path, graph):
+    free_flow_time_sum = 0
+    for i in range(len(path) - 1):
+        source = path[i]
+        target = path[i + 1]
+        free_flow_time_sum += graph[source][target]['time']
+    return free_flow_time_sum
 
+def calculate_path_length(path, graph):
+    path_length = 0
+    for i in range(len(path) - 1):
+        source = path[i]
+        target = path[i + 1]
+        path_length += graph[source][target]['object'].length
+    return path_length
+
+def calculate_path_capacity(path, graph, path_length):
+    capacity = 0
+    for i in range(len(path) - 1):
+        source = path[i]
+        target = path[i + 1]
+        capacity += graph[source][target]['object'].capacity * graph[source][target]['object'].length/path_length
+    return capacity
+
+def add_or_modify_undirected_edge(graph, node1, node2, time, length, capacity):
+    if graph.has_edge(node1, node2):
+        # If a directed edge exists, convert it to an undirected edge
+        graph.remove_edge(node1, node2)
+        graph.add_edge(node1, node2, directed=False)
+    else:
+        # If no edge exists, add an undirected edge
+        graph.add_edge(node1, node2)
+        graph.add_edge(node2, node1)
     
-    return adj_matrix
+    # update Link object for new station
+    new_link = tn.Link(from_node = node1, to_node = node2, alpha=.15, beta=4, free_speed = time, SO = False, capacity = capacity, flow=0, length = length)
+    graph.edges[(node1, node2)]['object'] = new_link
+    new_link = tn.Link(from_node = node2, to_node = node1, alpha=.15, beta=4, free_speed = time, SO = False, capacity = capacity, flow=0, length = length)
+    graph.edges[(node2, node1)]['object'] = new_link
+
+    # update time for new station
+    graph.edges[(node1, node2)]['time'] = time
+    graph.edges[(node2, node1)]['time'] = time
+
+    return graph
+
+# Method for calculating link travel time based on BPR function.
+def BPR(t0, xa, ca, alpha, beta):
+    ta = t0*(1+alpha*(xa/ca)**beta)
+    return ta
+
+# Method for calculating objective function value. 
+def calculateZ(theta, network, SO):
+    z = 0
+    for linkKey, linkVal in network.items():
+        t0 = linkVal['t0']
+        ca = linkVal['capa']
+        beta = linkVal['beta']
+        alpha = linkVal['alpha']
+        aux = linkVal['auxiliary'][-1]
+        flow = linkVal['flow'][-1]
+        
+        if SO == False:
+            z += integrate.quad(lambda x: BPR(t0, x, ca, alpha, beta), 0, flow+theta*(aux-flow))[0]
+        elif SO == True:
+            z += list(map(lambda x : x * BPR(t0, x, ca, alpha, beta), [flow+theta*(aux-flow)]))[0]
+    return z
+
+# Finds theta, the optimal solution of the line search that minimizing the objective function along the line between current flow and auxiliary flow.
+def lineSearch(network, SO):
+    theta = minimize_scalar(lambda x: calculateZ(x, network, SO), bounds = (0,1), method = 'Bounded')
+    return theta.x
