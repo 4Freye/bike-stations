@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from pytrans.UrbanNetworkAnalysis import TransportationNetworks as tn
 import scipy.integrate as integrate 
+import networkx as nx
 from scipy.optimize import minimize_scalar
 
 def combine_series(series_list):
@@ -183,3 +184,82 @@ def calculateZ(theta, network, SO):
 def lineSearch(network, SO):
     theta = minimize_scalar(lambda x: calculateZ(x, network, SO), bounds = (0,1), method = 'Bounded')
     return theta.x
+
+def compute_eq_cost(station, siouxFalls):
+    siouxFalls2 = siouxFalls
+    siouxFalls2.graph = siouxFalls.graph.copy()
+
+    # get the shortest path between two nodes
+    shortest_path = nx.shortest_path(siouxFalls2.graph, station[0],station[1], weight='time')
+
+    # Calculate time, length and capacity
+    bike_edge_time = calculate_path_free_flow_time(shortest_path, siouxFalls2.graph) * 1/2
+    path_length = calculate_path_length(shortest_path, siouxFalls2.graph)
+    capacity = calculate_path_capacity(shortest_path, siouxFalls2.graph, path_length)
+
+    # If not an edge yet then add one:    
+    siouxFalls2.graph = add_or_modify_undirected_edge(siouxFalls2.graph, station[0], station[1], bike_edge_time, path_length, capacity)
+
+    # initialization
+
+    # define output variables, network and fwResult
+    network = {(u,v): {'t0':d['object'].t0, 'alpha':d['object'].alpha, \
+            'beta':d['object'].beta, 'capa':d['object'].capacity, 'flow':[], \
+            'auxiliary':[], 'cost':[]} for (u, v, d) in siouxFalls2.graph.edges(data=True)}
+
+    fwResult = {'theta':[], 'z':[]}
+
+    # initial all-or-nothing assignment and update link travel time(cost)
+    siouxFalls2.all_or_nothing_assignment()
+    siouxFalls2.update_linkcost()
+
+    for linkKey, linkVal in network.items():
+        linkVal['cost'].append(siouxFalls2.graph[linkKey[0]][linkKey[1]]['weight'])
+        linkVal['auxiliary'].append(siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].vol)
+        linkVal['flow'].append(siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].vol)
+
+    ## iterations
+    iterNum = 0
+    iteration = True
+    while iteration:
+        iterNum += 1
+        siouxFalls2.all_or_nothing_assignment()
+        siouxFalls2.update_linkcost()
+        
+        # set auxiliary flow using updated link flow
+        for linkKey, linkVal in network.items():
+            linkVal['auxiliary'].append(siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].vol)
+            
+        # getting optimal move size (theta)
+        theta = lineSearch(network, False)
+        fwResult['theta'].append(theta)
+        
+        # set link flow (move) based on the theta, auxiliary flow, and link flow of previous iteration
+        for linkKey, linkVal in network.items():
+            aux = linkVal['auxiliary'][-1]
+            flow = linkVal['flow'][-1]
+            linkVal['flow'].append(flow + theta*(aux-flow))
+            
+            siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].vol =  flow + theta * (aux - flow)
+            siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].flow = flow + theta * (aux - flow)
+            
+        # update link travel time
+        siouxFalls2.update_linkcost()
+        
+        # calculate objective function value
+        z=0
+        for linkKey, linkVal in network.items():
+            linkVal['cost'].append(siouxFalls2.graph[linkKey[0]][linkKey[1]]['weight'])
+            totalcost = siouxFalls2.graph[linkKey[0]][linkKey[1]]['object'].get_objective_function()
+            z += totalcost
+            
+        fwResult['z'].append(z)        
+            
+        # convergence test
+        if iterNum == 1:
+            iteration = True
+        else:
+            if abs(fwResult['z'][-2] - fwResult['z'][-1]) <= 0.001 or iterNum==3000:
+                iteration = False
+    print('station {} eq cost computed. Cost: {}'.format(station,fwResult['z'][-1]) )
+    return fwResult['z'][-1]
