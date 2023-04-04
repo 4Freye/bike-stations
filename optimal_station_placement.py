@@ -1,7 +1,7 @@
 # %% set working directory if needed
 import os
 os.getcwd()
-#os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
+os.chdir('/Users/MargheritaP/Documents/GitHub/bike-stations')  
 #os.getcwd()
 
 # %% import packages
@@ -19,9 +19,9 @@ import random
 from bike_functions import *
 
 # %% load trips data as potential commuter data
-anaheim_trips = "anaheim_trips.tntp"
+anaheim_trips = "Data/anaheim_trips.tntp"
 
-with open('anaheim_trips.tntp', 'r') as f:
+with open(anaheim_trips, 'r') as f:
     data = f.readlines()
 
 table = []
@@ -43,21 +43,35 @@ print(trips.shape)
 print(trips.head())
 
 
-# %% read road data as dataframes
+# %% read ANAHEIM road data as dataframes
 
 # Zones: 38 __ Nodes: 416 __ Links: 914 __ Trips: 104,694.40
 # Time: minutes __ Distance: feet __ Speed: feet per minute 
 
-anaheim = "anaheim.tntp"
+anaheim = "Data/anaheim.tntp"
 anaheim = pd.read_csv(anaheim, skiprows=8, sep='\t').drop(["~",";"], axis=1)
-print(anaheim.head())
+
 
 #flow data
-flow = "anaheim_flow.tntp"
+flow = "Data/anaheim_flow.tntp"
 flow = pd.read_csv(flow, sep='\t|\s', engine='python')
 anaheim = anaheim.merge(flow[["Volume"]], left_index=True, right_index=True)
 
-# %% convert the dataframe data to a graph.
+print(anaheim.head())
+
+# %% read SIOUX FALLS road data as dataframes
+
+siouxfalls = "Data/SiouxFalls_net.tntp"
+siouxfalls = pd.read_csv(siouxfalls, skiprows=8, sep='\t').drop(["~",";"], axis=1)
+
+#flow data
+flow = "Data/SiouxFalls_flow.tntp"
+flow = pd.read_csv(flow, sep='\t|\s', engine='python')
+siouxfalls = siouxfalls.merge(flow[["Volume"]], left_index=True, right_index=True)
+
+print(siouxfalls.head())
+
+# %% convert the ANAHEIM dataframe data to a graph.
 g = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
 
 # add colour as edge attribute - on the basis of volume
@@ -87,6 +101,37 @@ layout = g.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchte
 g.summary() # 416 vertices and 914 edges
 ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
 
+# %% convert the SIOUX FALLS dataframe data to a graph.
+g = ig.Graph.TupleList(siouxfalls.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
+
+# add colour as edge attribute - on the basis of volume
+g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
+
+# give zone-nodes a different colour and shape to make them visible
+
+zone_indices = list(range(1,1)) #not applicable for sioux falls
+
+colors = ["red" if i in zone_indices else "grey" for i in range(g.vcount())]
+shapes = ["square" if i in zone_indices else "circle" for i in range(g.vcount())]
+g.vs["color"] = colors
+g.vs["shape"] = shapes
+
+# add degree as vertex attribute
+degree = g.degree()
+g.vs["degree"] = degree
+
+# calculate vertex sizes based on degree
+
+sizes = [d *2 for d in degree]
+
+#adjust layout -  for full list of options: https://igraph.org/python/tutorial/0.9.6/visualisation.html#graph-layouts
+layout = g.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
+
+# get graph information and plot
+g.summary() # 416 vertices and 914 edges
+ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
+
+
 # %%
 
 # find all shortest paths between vertices in the subset
@@ -94,7 +139,7 @@ shortest_paths = []
 for source in zone_indices:
     for target in zone_indices:
         if source != target:
-            paths = g.get_all_shortest_paths(source, to=target)
+            paths = g.get_all_shortest_paths(source, to=target, weights='free_flow_time')
             shortest_paths.extend(paths)
 
 #print(shortest_paths) # list of lists
@@ -104,6 +149,11 @@ trip_paths = pd.DataFrame({
     'Destination': [lst[-1] for lst in shortest_paths],
     'path_length': [len(lst) for lst in shortest_paths]
 })
+    
+contains_zone = [any(1 <= node <= 38 for node in path[1:-1]) for path in trip_paths['path']]
+
+trip_paths['contains_zone'] = contains_zone
+
 
 print(trip_paths[0:10])
 print(trip_paths.shape)
