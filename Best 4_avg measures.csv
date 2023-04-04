@@ -1,0 +1,14 @@
+,Method 1,Method 2
+distance,1.0,1.25
+betweenness_o,0.223,0.054
+betweenness_d,0.09,0.066
+closeness_o,0.357,0.291
+closeness_d,0.342,0.312
+eigenvector_o,0.654,0.116
+eigenvector_d,0.615,0.135
+int_out_degree_centrality,0.018,0.015
+int_in_degree_centrality,0.018,0.015
+in_degree_o,0.141,0.12
+in_degree_d,0.13,0.12
+out_degree_o,0.141,0.12
+out_degree_d,0.13,0.12
