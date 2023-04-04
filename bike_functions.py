@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from functools import reduce
 import numpy as np
 import pandas as pd
-from pytrans.UrbanNetworkAnalysis import TransportationNetworks as tn
+#from pytrans.UrbanNetworkAnalysis import TransportationNetworks as tn
 import scipy.integrate as integrate 
 import networkx as nx
 from scipy.optimize import minimize_scalar
@@ -92,6 +92,23 @@ def calculate_travel_time(path, edges_df):
 
     return travel_time
 
+def calculate_travel_time_ff(path, edges_df):
+
+    if 'init_node' in edges_df.columns:
+        source= 'init_node'
+        target= 'term_node'
+    else:
+        source = 'source'
+        target = 'target'
+    # Select the edges that correspond to the given path
+    edges = edges_df.loc[edges_df[source].isin(path[:-1]) & edges_df[target].isin(path[1:])]
+
+    # Calculate the total travel time for the path
+    travel_time = edges['free_flow_time'].sum()
+
+    return travel_time
+
+
 def calculate_travel_time_bike(path, edges_df, is_bike_edge):
     # Select the edges that correspond to the given path
     edges = edges_df.loc[edges_df['source'].isin(path[:-1]) & edges_df['target'].isin(path[1:])].copy()
@@ -104,6 +121,17 @@ def calculate_travel_time_bike(path, edges_df, is_bike_edge):
     travel_time += (edges[~edges.bike]['length'] / edges[~edges.bike]['speed']).sum()
     
     return travel_time
+
+def calculate_travel_time_bike_ff(path, edges_df, is_bike_edge):
+    edges = edges_df.loc[edges_df['source'].isin(path[:-1]) & edges_df['target'].isin(path[1:])].copy()
+
+    edges['bike'] = is_bike_edge
+
+    travel_time = (edges[edges.bike]['free_flow_time']).sum()/2
+    travel_time += (edges[~edges.bike]['free_flow_time']).sum()
+    
+    return travel_time
+
 
 def filter_stations(station_list):
     filtered_tuple = []
