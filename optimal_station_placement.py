@@ -71,65 +71,67 @@ siouxfalls = siouxfalls.merge(flow[["Volume"]], left_index=True, right_index=Tru
 
 print(siouxfalls.head())
 
+#%% ANAHEIM
+
 # %% convert the ANAHEIM dataframe data to a graph.
-g = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
+g_a = ig.Graph.TupleList(anaheim.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
 
 # add colour as edge attribute - on the basis of volume
-g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
+g_a.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
 
 # give zone-nodes a different colour and shape to make them visible
 
 zone_indices = list(range(1,39))
 
-colors = ["red" if i in zone_indices else "grey" for i in range(g.vcount())]
-shapes = ["square" if i in zone_indices else "circle" for i in range(g.vcount())]
-g.vs["color"] = colors
-g.vs["shape"] = shapes
+colors = ["red" if i in zone_indices else "grey" for i in range(g_a.vcount())]
+shapes = ["square" if i in zone_indices else "circle" for i in range(g_a.vcount())]
+g_a.vs["color"] = colors
+g_a.vs["shape"] = shapes
 
 # add degree as vertex attribute
-degree = g.degree()
-g.vs["degree"] = degree
+degree = g_a.degree()
+g_a.vs["degree"] = degree
 
 # calculate vertex sizes based on degree
 
-sizes = [d * 1.4 for d in degree]
+sizes_a = [d * 1.4 for d in degree]
 
 #adjust layout -  for full list of options: https://igraph.org/python/tutorial/0.9.6/visualisation.html#graph-layouts
-layout = g.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
+layout = g_a.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
 
 # get graph information and plot
-g.summary() # 416 vertices and 914 edges
-ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
+g_a.summary() # 416 vertices and 914 edges
+ig.plot(g_a, vertex_size = sizes_a, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
 
 # %% convert the SIOUX FALLS dataframe data to a graph.
-g = ig.Graph.TupleList(siouxfalls.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
+g_s = ig.Graph.TupleList(siouxfalls.itertuples(index=False), directed=True, weights=False, edge_attrs=["capacity","length","free_flow_time","b","power","speed","toll","link_type", "Volume"])
 
 # add colour as edge attribute - on the basis of volume
-g.es['color'] = continuous_to_rgb(np.log(anaheim.Volume +1)).tolist()
+g_s.es['color'] = continuous_to_rgb(np.log(siouxfalls.Volume +1)).tolist()
 
 # give zone-nodes a different colour and shape to make them visible
 
-zone_indices = list(range(1,1)) #not applicable for sioux falls
+zone_indices_s = list(range(1,1)) #not applicable for sioux falls
 
-colors = ["red" if i in zone_indices else "grey" for i in range(g.vcount())]
-shapes = ["square" if i in zone_indices else "circle" for i in range(g.vcount())]
-g.vs["color"] = colors
-g.vs["shape"] = shapes
+colors = ["red" if i in zone_indices_s else "grey" for i in range(g_s.vcount())]
+shapes = ["square" if i in zone_indices_s else "circle" for i in range(g_s.vcount())]
+g_s.vs["color"] = colors
+g_s.vs["shape"] = shapes
 
 # add degree as vertex attribute
-degree = g.degree()
-g.vs["degree"] = degree
+degree_s = g_s.degree()
+g_s.vs["degree"] = degree_s
 
 # calculate vertex sizes based on degree
 
-sizes = [d *2 for d in degree]
+sizes_s = [d *3 for d in degree_s]
 
 #adjust layout -  for full list of options: https://igraph.org/python/tutorial/0.9.6/visualisation.html#graph-layouts
-layout = g.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
+layout = g_s.layout("kamada_kawai") # most suitable: kamada_kawai __ DrL __fruchterman_reingold __ davidson_harel
 
 # get graph information and plot
-g.summary() # 416 vertices and 914 edges
-ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
+g_s.summary() # 416 vertices and 914 edges
+ig.plot(g_s, vertex_size = sizes_s, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
 
 
 # %%
@@ -139,7 +141,7 @@ shortest_paths = []
 for source in zone_indices:
     for target in zone_indices:
         if source != target:
-            paths = g.get_all_shortest_paths(source, to=target, weights='free_flow_time')
+            paths = g_a.get_all_shortest_paths(source, to=target, weights='free_flow_time')
             shortest_paths.extend(paths)
 
 #print(shortest_paths) # list of lists
@@ -190,19 +192,19 @@ g.es['color'] = ['grey' if edge else 'pink' for edge in is_bike_edge]
 ig.plot(g, vertex_size = sizes, layout=layout, edge_arrow_size = 0.3, vertex_frame_width=0.5)
 
 # %% optional: generate a subgraph to work with fewer nodes
-sg = g.subgraph(g.neighborhood(1, order= 7))
-sg_df = sg.get_edge_dataframe()
+sg_a = g_a.subgraph(g_a.neighborhood(31, order= 5))
+sg_df = sg_a.get_edge_dataframe()
 
 # here's what the subgraph looks like. The edges are colored by volume of traffic.
-ig.plot(sg)
+ig.plot(sg_a,  edge_arrow_size = 0.6, sizes = sizes_a)
 
 # %% generate some fake commuter data:
 paths = []
 time = []
 volume = []
-for v in sg.vs.indices:
+for v in sg_a.vs.indices:
     
-    path = random.sample(filter_subpaths(sg.get_all_shortest_paths(v)), 1)[0]
+    path = random.sample(filter_subpaths(sg_a.get_all_shortest_paths(v)), 1)[0]
     if len(path) >1:
         paths.append(path)
         time.append(calculate_travel_time(path, sg_df))
